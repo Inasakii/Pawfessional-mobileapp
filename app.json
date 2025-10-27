@@ -1,0 +1,38 @@
+{
+  "expo": {
+    "name": "mobileapp",
+    "slug": "mobileapp",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "../mobileapp/mobile/assets/icon.png",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "splash": {
+      "image": "../mobileapp/mobile/assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#ffffff"
+    },
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "../mobileapp/mobile/assets/adaptive-icon.png",
+        "backgroundColor": "#ffffff"
+      },
+      "edgeToEdgeEnabled": true,
+      "package": "com.kennen.mobileapp"
+    },
+    "web": {
+      "favicon": "./assets/icon.png"
+    },
+    "plugins": [
+      "expo-secure-store"
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "bf74ba6c-174c-4dfc-b569-f65a0b1d4283"
+      }
+    }
+  }
+}
