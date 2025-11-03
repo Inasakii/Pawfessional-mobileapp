@@ -13,7 +13,8 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Calendar } from "react-native-calendars";
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect } from '@react-navigation/native';
-import { MOBILE_API_BASE_URL, PUBLIC_API_BASE_URL } from "../config/apiConfigMobile"; // Corrected import path
+import io from 'socket.io-client';
+import { MOBILE_API_BASE_URL, PUBLIC_API_BASE_URL, MOBILE_SERVER_ROOT_URL } from "../config/apiConfigMobile";
 
 // Helper to prevent timezone issues
 const toLocalDateString = (dateStr) => {
@@ -34,28 +35,40 @@ const formatTime = (timeString) => {
     return `${h}:${m} ${ampm}`;
 };
 
-const AppointmentItem = ({ appointment }) => (
-    <View style={styles.appointmentItem}>
-        <View style={styles.itemHeader}>
-            <Ionicons name="paw-outline" size={20} color="#E9590F" />
-            <Text style={styles.petName}>{appointment.pet_name}</Text>
-        </View>
-        <View style={styles.itemRow}>
-            <Ionicons name="apps-outline" size={16} color="#4A5568" style={styles.itemIcon} />
-            <Text style={styles.services}>{appointment.services.join(', ')}</Text>
-        </View>
-        <View style={styles.itemRow}>
-            <Ionicons name="time-outline" size={16} color="#4A5568" style={styles.itemIcon} />
-            <Text style={styles.time}>{formatTime(appointment.appointment_time)}</Text>
-        </View>
-        {appointment.notes && (
-            <View style={[styles.itemRow, styles.notesRow]}>
-                <Ionicons name="information-circle-outline" size={16} color="#4A5568" style={styles.itemIcon} />
-                <Text style={styles.notesText}>{appointment.notes}</Text>
+const AppointmentItem = ({ appointment, onCancel }) => {
+    const canCancel = appointment.status && ['Pending', 'Approved'].includes(appointment.status);
+
+    return (
+        <View style={styles.appointmentItem}>
+            <View style={styles.itemHeader}>
+                <Ionicons name="paw-outline" size={20} color="#E9590F" />
+                <Text style={styles.petName}>{appointment.pet_name}</Text>
             </View>
-        )}
-    </View>
-);
+            <View style={styles.itemRow}>
+                <Ionicons name="apps-outline" size={16} color="#4A5568" style={styles.itemIcon} />
+                <Text style={styles.services}>{appointment.services.join(', ')}</Text>
+            </View>
+            <View style={styles.itemRow}>
+                <Ionicons name="time-outline" size={16} color="#4A5568" style={styles.itemIcon} />
+                <Text style={styles.time}>{formatTime(appointment.appointment_time)}</Text>
+            </View>
+            {appointment.notes && (
+                <View style={[styles.itemRow, styles.notesRow]}>
+                    <Ionicons name="information-circle-outline" size={16} color="#4A5568" style={styles.itemIcon} />
+                    <Text style={styles.notesText}>{appointment.notes}</Text>
+                </View>
+            )}
+            {canCancel && (
+                <TouchableOpacity 
+                    style={styles.cancelButton} 
+                    onPress={() => onCancel(appointment.appointment_id)}>
+                    <Ionicons name="close-circle-outline" size={18} color="#EF4444" />
+                    <Text style={styles.cancelButtonText}>Cancel Appointment</Text>
+                </TouchableOpacity>
+            )}
+        </View>
+    );
+};
 
 const PublicEventItem = ({ event }) => {
     const start = event.start ? new Date(event.start) : null;
@@ -132,6 +145,16 @@ export default function AppointmentCalendar({ navigation, route }) {
             setLoadingPublicEvents(false);
         }
     }, []);
+
+    useEffect(() => {
+        const socket = io(MOBILE_SERVER_ROOT_URL);
+        socket.on('appointment_update', () => {
+            console.log('Calendar: Received appointment update, refetching...');
+            fetchAppointments();
+            fetchPublicEvents(); 
+        });
+        return () => socket.disconnect();
+    }, [fetchAppointments, fetchPublicEvents]);
     
     useFocusEffect(
         React.useCallback(() => {
@@ -140,6 +163,36 @@ export default function AppointmentCalendar({ navigation, route }) {
         }, [fetchAppointments, fetchPublicEvents])
     );
     
+    const handleCancelAppointment = (appointmentId) => {
+        Alert.alert(
+            "Confirm Cancellation",
+            "Are you sure you want to cancel this appointment?",
+            [
+                { text: "No", style: "cancel" },
+                {
+                    text: "Yes, Cancel",
+                    style: "destructive",
+                    onPress: async () => {
+                        try {
+                            const response = await fetch(`${MOBILE_API_BASE_URL}/appointment/${appointmentId}/cancel`, {
+                                method: 'PATCH',
+                            });
+                            const result = await response.json();
+                            if (response.ok) {
+                                Alert.alert("Success", "Appointment cancelled successfully.");
+                                fetchAppointments(); // Refetch to update the UI
+                            } else {
+                                throw new Error(result.message || "Failed to cancel appointment.");
+                            }
+                        } catch (error) {
+                            Alert.alert('Error', error.message);
+                        }
+                    },
+                },
+            ]
+        );
+    };
+
     const markedDates = useMemo(() => {
         const markings = {};
         // Mark user's appointments
@@ -202,7 +255,7 @@ export default function AppointmentCalendar({ navigation, route }) {
                 <ScrollView contentContainerStyle={{flexGrow: 1}}>
                     {appointmentsOnSelectedDate.length > 0 ? (
                         appointmentsOnSelectedDate.map(app => (
-                           <AppointmentItem key={`app-${app.appointment_id}`} appointment={app} />
+                           <AppointmentItem key={`app-${app.appointment_id}`} appointment={app} onCancel={handleCancelAppointment} />
                         ))
                     ) : (
                         <View style={styles.emptyContainer}>
@@ -312,5 +365,20 @@ const styles = StyleSheet.create({
         fontSize: 13,
         flex: 1,
         fontStyle: 'italic',
-    }
+    },
+    cancelButton: {
+        marginTop: 15,
+        paddingTop: 10,
+        borderTopWidth: 1,
+        borderTopColor: '#f0f0f0',
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    cancelButtonText: {
+        color: '#EF4444',
+        fontWeight: '600',
+        fontSize: 15,
+        marginLeft: 5,
+    },
 });

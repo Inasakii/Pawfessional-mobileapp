@@ -17,7 +17,7 @@
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./mobile/assets/PawLogo.png",
+        "foregroundImage": "./mobile/assets/PawLogo.ico",
         "backgroundColor": "#ffffff"
       },
       "edgeToEdgeEnabled": true,
