@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useMemo, useCallback } from "react";
 import {
   View,
@@ -20,6 +21,19 @@ const toLocalDateString = (dateStr) => {
     return new Date(dateStr + 'T00:00:00').toDateString();
 };
 
+const formatTime = (timeString) => {
+    if (!timeString || typeof timeString !== 'string') return '';
+    const [hours, minutes] = timeString.split(':');
+    let h = parseInt(hours, 10);
+    if (isNaN(h)) return timeString; // Return original if parsing fails
+
+    const m = String(minutes).padStart(2, '0');
+    const ampm = h >= 12 ? 'PM' : 'AM';
+    h = h % 12;
+    h = h || 12; // Handle midnight (0) as 12 AM
+    return `${h}:${m} ${ampm}`;
+};
+
 const AppointmentItem = ({ appointment }) => (
     <View style={styles.appointmentItem}>
         <View style={styles.itemHeader}>
@@ -32,7 +46,7 @@ const AppointmentItem = ({ appointment }) => (
         </View>
         <View style={styles.itemRow}>
             <Ionicons name="time-outline" size={16} color="#4A5568" style={styles.itemIcon} />
-            <Text style={styles.time}>{appointment.appointment_time}</Text>
+            <Text style={styles.time}>{formatTime(appointment.appointment_time)}</Text>
         </View>
         {appointment.notes && (
             <View style={[styles.itemRow, styles.notesRow]}>

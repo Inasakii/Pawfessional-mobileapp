@@ -2,7 +2,7 @@
   "expo": {
     "name": "Vet App",
     "slug": "vet-app",
-    "version": "11.5.0",
+    "version": "11.8.0",
     "orientation": "portrait",
     "icon": "./mobile/assets/PawLogo.png",
     "userInterfaceStyle": "light",
@@ -17,7 +17,7 @@
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./mobile/assets/adaptive-icon.png",
+        "foregroundImage": "./mobile/assets/PawLogo.png",
         "backgroundColor": "#ffffff"
       },
       "edgeToEdgeEnabled": true,
