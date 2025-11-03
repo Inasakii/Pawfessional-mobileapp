@@ -4,9 +4,7 @@ import { createNativeStackNavigator } from "@react-navigation/native-stack";
 
 import Dashboard from "../app/dashboard";
 import Profile from "../app/profile";
-import Settings from "../app/settings";
 import AppointmentCalendar from "../app/calendar";
-import AppointmentHistory from "../app/AppointmentHistory";
 import BookingScreen from "../app/BookingScreen";
 import PetAdd from "../app/pet-add";
 import PetInfo from "../app/pet-info";
@@ -21,15 +19,11 @@ export default function AppNavigator({ user, setUser }) {
       </Stack.Screen>
       <Stack.Screen name="BookingFlow" component={BookingScreen} />
       <Stack.Screen name="AppointmentCalendar" component={AppointmentCalendar}/>
-      <Stack.Screen name="AppointmentHistory" component={AppointmentHistory}/>
       <Stack.Screen name="Profile">
         {props => <Profile {...props} user={user} setUser={setUser} />}
       </Stack.Screen>
       <Stack.Screen name="PetInfo">
         {props => <PetInfo {...props} user={user} />}
-      </Stack.Screen>
-      <Stack.Screen name="Settings">
-        {props => <Settings {...props} user={user} setUser={setUser} />}
       </Stack.Screen>
       <Stack.Screen name="PetAdd">
         {props => <PetAdd {...props} user={user} />} 

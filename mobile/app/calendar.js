@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useMemo, useCallback } from "react";
 import {
   View,
@@ -13,8 +12,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Calendar } from "react-native-calendars";
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect } from '@react-navigation/native';
-
-const SERVER_URL = 'http://192.168.100.12:5000';
+import { MOBILE_API_BASE_URL, PUBLIC_API_BASE_URL } from "../config/apiConfigMobile"; // Corrected import path
 
 // Helper to prevent timezone issues
 const toLocalDateString = (dateStr) => {
@@ -36,13 +34,48 @@ const AppointmentItem = ({ appointment }) => (
             <Ionicons name="time-outline" size={16} color="#4A5568" style={styles.itemIcon} />
             <Text style={styles.time}>{appointment.appointment_time}</Text>
         </View>
+        {appointment.notes && (
+            <View style={[styles.itemRow, styles.notesRow]}>
+                <Ionicons name="information-circle-outline" size={16} color="#4A5568" style={styles.itemIcon} />
+                <Text style={styles.notesText}>{appointment.notes}</Text>
+            </View>
+        )}
     </View>
 );
+
+const PublicEventItem = ({ event }) => {
+    const start = event.start ? new Date(event.start) : null;
+    const end = event.end ? new Date(event.end) : null;
+    const startTime = start ? start.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'N/A';
+    const endTime = end ? end.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'N/A';
+    const description = event.extendedProps?.notes || "No details provided.";
+
+    return (
+        <View style={styles.publicEventItem}>
+            <View style={styles.itemHeader}>
+                <Ionicons name="megaphone-outline" size={20} color="#6BCB77" />
+                <Text style={styles.petName}>{event.title}</Text>
+            </View>
+            <View style={styles.itemRow}>
+                <Ionicons name="time-outline" size={16} color="#4A5568" style={styles.itemIcon} />
+                <Text style={styles.services}>{startTime} - {endTime}</Text>
+            </View>
+            {description !== "No details provided." && (
+                <View style={styles.itemRow}>
+                    <Ionicons name="information-circle-outline" size={16} color="#4A5568" style={styles.itemIcon} />
+                    <Text style={styles.services}>{description}</Text>
+                </View>
+            )}
+        </View>
+    );
+};
 
 export default function AppointmentCalendar({ navigation, route }) {
     const user = route?.params?.user || null;
     const [appointments, setAppointments] = useState([]);
+    const [publicEvents, setPublicEvents] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [loadingPublicEvents, setLoadingPublicEvents] = useState(true);
     const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
 
     const fetchAppointments = useCallback(async () => {
@@ -52,7 +85,7 @@ export default function AppointmentCalendar({ navigation, route }) {
         };
         setLoading(true);
         try {
-            const response = await fetch(`${SERVER_URL}/api/mobile/appointments/${user.id}`);
+            const response = await fetch(`${MOBILE_API_BASE_URL}/appointments/${user.id}`);
             const data = await response.json();
             if (response.ok) {
                 const activeAppointments = data.filter(app => app.status !== 'Cancelled' && app.status !== 'Rejected');
@@ -61,34 +94,65 @@ export default function AppointmentCalendar({ navigation, route }) {
                 throw new Error(data.message || 'Failed to fetch appointments');
             }
         } catch (error) {
-            Alert.alert('Error', error.message);
+            Alert.alert('Error fetching personal appointments', error.message);
             setAppointments([]); // Clear appointments on error
         } finally {
             setLoading(false);
         }
     }, [user]);
+
+    const fetchPublicEvents = useCallback(async () => {
+        setLoadingPublicEvents(true);
+        try {
+            const response = await fetch(`${PUBLIC_API_BASE_URL}/events`);
+            const data = await response.json();
+            if (response.ok) {
+                setPublicEvents(data);
+            } else {
+                throw new Error(data.error || 'Failed to fetch public events');
+            }
+        } catch (error) {
+            Alert.alert('Error fetching public events', error.message);
+            setPublicEvents([]);
+        } finally {
+            setLoadingPublicEvents(false);
+        }
+    }, []);
     
     useFocusEffect(
         React.useCallback(() => {
             fetchAppointments();
-        }, [fetchAppointments])
+            fetchPublicEvents();
+        }, [fetchAppointments, fetchPublicEvents])
     );
     
     const markedDates = useMemo(() => {
         const markings = {};
+        // Mark user's appointments
         appointments.forEach(app => {
             const dateKey = app.appointment_date.split('T')[0];
             markings[dateKey] = { marked: true, dotColor: '#E9590F' };
         });
+        // Mark public events
+        publicEvents.forEach(event => {
+            const dateKey = event.start.split('T')[0];
+            markings[dateKey] = { ...markings[dateKey], marked: true, dotColor: markings[dateKey]?.dotColor ? '#6BCB77' : '#6BCB77' }; // Green for public events
+        });
+
         if (selectedDate) {
-            markings[selectedDate] = { ...markings[selectedDate], selected: true, selectedColor: '#E9590F' };
+            markings[selectedDate] = { ...markings[selectedDate], selected: true, selectedColor: '#E9590F', selectedTextColor: '#fff' };
         }
         return markings;
-    }, [appointments, selectedDate]);
+    }, [appointments, publicEvents, selectedDate]);
 
     const appointmentsOnSelectedDate = useMemo(() => {
         return appointments.filter(app => app.appointment_date.split('T')[0] === selectedDate);
     }, [appointments, selectedDate]);
+
+    const publicEventsOnSelectedDate = useMemo(() => {
+        return publicEvents.filter(event => event.start.split('T')[0] === selectedDate);
+    }, [publicEvents, selectedDate]);
+
 
     return (
         <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
@@ -97,7 +161,7 @@ export default function AppointmentCalendar({ navigation, route }) {
                     <Ionicons name="arrow-back" size={24} color="#333" />
                 </TouchableOpacity>
                 <Text style={styles.headerTitle}>My Calendar</Text>
-                <TouchableOpacity onPress={fetchAppointments}>
+                <TouchableOpacity onPress={() => { fetchAppointments(); fetchPublicEvents(); }}>
                     <Ionicons name="refresh" size={24} color="#333" />
                 </TouchableOpacity>
             </View>
@@ -118,18 +182,33 @@ export default function AppointmentCalendar({ navigation, route }) {
             
             <View style={styles.listContainer}>
                 <Text style={styles.listHeader}>
-                    Schedule for {selectedDate ? toLocalDateString(selectedDate) : '...'}
+                    Personal Schedule for {selectedDate ? toLocalDateString(selectedDate) : '...'}
                 </Text>
                 {loading ? <ActivityIndicator size="large" color="#E9590F" style={{marginTop: 20}}/> :
                 <ScrollView contentContainerStyle={{flexGrow: 1}}>
                     {appointmentsOnSelectedDate.length > 0 ? (
                         appointmentsOnSelectedDate.map(app => (
-                           <AppointmentItem key={app.appointment_id} appointment={app} />
+                           <AppointmentItem key={`app-${app.appointment_id}`} appointment={app} />
                         ))
                     ) : (
                         <View style={styles.emptyContainer}>
                             <Ionicons name="calendar-outline" size={60} color="#CBD5E0" />
-                            <Text style={styles.noAppointmentsText}>No appointments scheduled.</Text>
+                            <Text style={styles.noAppointmentsText}>No personal appointments scheduled.</Text>
+                        </View>
+                    )}
+
+                    <Text style={[styles.listHeader, {marginTop: 20}]}>
+                        Public Events for {selectedDate ? toLocalDateString(selectedDate) : '...'}
+                    </Text>
+                    {loadingPublicEvents ? <ActivityIndicator size="large" color="#6BCB77" style={{marginTop: 20}}/> :
+                    publicEventsOnSelectedDate.length > 0 ? (
+                        publicEventsOnSelectedDate.map(event => (
+                            <PublicEventItem key={`event-${event.id}`} event={event} />
+                        ))
+                    ) : (
+                        <View style={styles.emptyContainer}>
+                            <Ionicons name="newspaper-outline" size={60} color="#CBD5E0" />
+                            <Text style={styles.noAppointmentsText}>No public events scheduled for this day.</Text>
                         </View>
                     )}
                 </ScrollView>
@@ -161,7 +240,7 @@ const styles = StyleSheet.create({
         borderWidth: 1,
         borderColor: '#E2E8F0'
     },
-    listContainer: { flex: 1, paddingHorizontal: 20, paddingTop: 10 },
+    listContainer: { flex: 1, paddingHorizontal: 20, paddingTop: 10, paddingBottom: 20 },
     listHeader: { fontSize: 18, fontWeight: 'bold', marginBottom: 16, color: '#4A5568' },
     appointmentItem: { 
         backgroundColor: 'white', 
@@ -170,6 +249,14 @@ const styles = StyleSheet.create({
         marginBottom: 12,
         borderWidth: 1,
         borderColor: '#E2E8F0'
+    },
+    publicEventItem: {
+        backgroundColor: '#EAF7EF', // Light green background for public events
+        padding: 16,
+        borderRadius: 12,
+        marginBottom: 12,
+        borderWidth: 1,
+        borderColor: '#6BCB77',
     },
     itemHeader: {
         flexDirection: 'row',
@@ -199,5 +286,17 @@ const styles = StyleSheet.create({
         fontSize: 16,
         marginTop: 16,
         fontWeight: '500'
+    },
+    notesRow: {
+        marginTop: 8,
+        paddingTop: 8,
+        borderTopWidth: 1,
+        borderTopColor: '#F1F5F9'
+    },
+    notesText: {
+        color: '#4A5568',
+        fontSize: 13,
+        flex: 1,
+        fontStyle: 'italic',
     }
 });

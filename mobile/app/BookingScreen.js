@@ -1,13 +1,14 @@
+
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, TextInput, Alert, ActivityIndicator, Image } from 'react-native'; 
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, TextInput, Alert, ActivityIndicator, Image, Animated } from 'react-native'; 
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { Calendar } from 'react-native-calendars';
 import { useFocusEffect } from '@react-navigation/native';
+import { MOBILE_API_BASE_URL, MOBILE_SERVER_ROOT_URL } from "../config/apiConfigMobile"; 
 
 
 const phases = ["Select Pet", "Select Service", "Schedule", "Summary"];
-const SERVER_URL = 'http://192.168.100.12:5000';
 
 export default function BookingScreen({ navigation, route }) {
     const { user } = route.params;
@@ -21,17 +22,25 @@ export default function BookingScreen({ navigation, route }) {
         { name: 'Vaccination', selected: false },
         { name: 'Deworming', selected: false },
         { name: 'Grooming', selected: false },
+        { name: 'Ultrasound', selected: false },
+        { name: 'Confinement', selected: false },
+        { name: 'Surgery', selected: false },
     ]);
     const [notes, setNotes] = useState('');
     const [selectedDate, setSelectedDate] = useState('');
     const [selectedTime, setSelectedTime] = useState('');
     const [isSubmitting, setIsSubmitting] = useState(false);
+    
+    // State for Toast
+    const [showToast, setShowToast] = useState(false);
+    const [toastMessage, setToastMessage] = useState('');
+    const toastOpacity = useState(new Animated.Value(0))[0];
 
     const fetchPets = async () => {
         if (!user?.id) return;
         setLoadingPets(true);
         try {
-            const response = await fetch(`${SERVER_URL}/api/mobile/pets/${user.id}`);
+            const response = await fetch(`${MOBILE_API_BASE_URL}/pets/${user.id}`);
             const data = await response.json();
 
             if (!response.ok) {
@@ -53,6 +62,27 @@ export default function BookingScreen({ navigation, route }) {
         }, [user])
     );
     
+    useEffect(() => {
+        if (showToast) {
+            Animated.timing(toastOpacity, {
+                toValue: 1,
+                duration: 300,
+                useNativeDriver: true,
+            }).start(() => {
+                setTimeout(() => {
+                    Animated.timing(toastOpacity, {
+                        toValue: 0,
+                        duration: 300,
+                        useNativeDriver: true,
+                    }).start(() => {
+                        setShowToast(false);
+                        navigation.navigate('Dashboard');
+                    });
+                }, 2000);
+            });
+        }
+    }, [showToast]);
+
     const handleNext = () => {
         if (phaseIndex === 0 && selectedPetIds.length === 0) return Alert.alert("Selection Required", "Please select at least one pet.");
         if (phaseIndex === 1 && services.every(s => !s.selected)) return Alert.alert("Selection Required", "Please select at least one service.");
@@ -93,7 +123,7 @@ export default function BookingScreen({ navigation, route }) {
 
     const generateTimeSlots = () => {
         const slots = [];
-        for (let i = 8; i < 18; i++) { // 8 AM to 5:30 PM (17:30)
+        for (let i = 8; i < 18; i++) { 
             slots.push(`${String(i).padStart(2, '0')}:00`);
             slots.push(`${String(i).padStart(2, '0')}:30`);
         }
@@ -113,7 +143,7 @@ export default function BookingScreen({ navigation, route }) {
                 appointment_time: selectedTime,
             };
 
-            const response = await fetch(`${SERVER_URL}/api/mobile/appointment`, {
+            const response = await fetch(`${MOBILE_API_BASE_URL}/appointment`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload),
@@ -122,21 +152,16 @@ export default function BookingScreen({ navigation, route }) {
             const responseText = await response.text();
 
             if (!response.ok) {
-                // Try to parse the error response as JSON, but if it fails, show the raw text
                 try {
                     const errorResult = JSON.parse(responseText);
                     throw new Error(errorResult.message || 'An unknown server error occurred.');
                 } catch (e) {
-                    // This catches the HTML error page
                     throw new Error(`Server returned an invalid response. Status: ${response.status}`);
                 }
             }
 
-            const result = JSON.parse(responseText);
-
-            Alert.alert('Booking Confirmed!', 'Your appointment has been successfully scheduled.', [
-                { text: 'OK', onPress: () => navigation.navigate('Dashboard') }
-            ]);
+            setToastMessage('Booking Confirmed! Your appointment has been successfully scheduled.');
+            setShowToast(true);
 
         } catch (error) {
             Alert.alert('Booking Error', error.message);
@@ -163,7 +188,7 @@ export default function BookingScreen({ navigation, route }) {
                 <TouchableOpacity key={pet.id} style={[styles.option, selectedPetIds.includes(pet.id) && styles.selectedOption]} onPress={() => togglePetSelection(pet.id)}>
                     <View style={styles.petInfoContainer}>
                         {pet.pet_image_url ? (
-                            <Image source={{ uri: `${SERVER_URL}${pet.pet_image_url}`}} style={styles.petImage} />
+                            <Image source={{ uri: `${MOBILE_SERVER_ROOT_URL}${pet.pet_image_url}`}} style={styles.petImage} />
                         ) : (
                             <View style={styles.petAvatar}>
                                 <Text style={styles.petAvatarText}>{(pet.pet_name || '?')[0]}</Text>
@@ -287,6 +312,12 @@ export default function BookingScreen({ navigation, route }) {
                     </TouchableOpacity>
                 )}
             </View>
+
+            {showToast && (
+                <Animated.View style={[styles.toastContainer, { opacity: toastOpacity }]}>
+                    <Text style={styles.toastText}>{toastMessage}</Text>
+                </Animated.View>
+            )}
         </SafeAreaView>
     );
 }
@@ -330,4 +361,22 @@ const styles = StyleSheet.create({
     footerButton: { backgroundColor: '#E9590F', padding: 15, borderRadius: 10, alignItems: 'center' },
     footerButtonText: { color: '#fff', fontSize: 16, fontWeight: 'bold' },
     disabledButton: { backgroundColor: '#ccc' },
+    toastContainer: {
+        position: 'absolute',
+        bottom: 100, // Adjust as needed to not overlap with footer/buttons
+        left: 20,
+        right: 20,
+        backgroundColor: 'rgba(50, 50, 50, 0.9)',
+        borderRadius: 8,
+        padding: 12,
+        alignItems: 'center',
+        justifyContent: 'center',
+        zIndex: 1000,
+        elevation: 5,
+    },
+    toastText: {
+        color: 'white',
+        fontSize: 14,
+        textAlign: 'center',
+    },
 });

@@ -1,34 +1,30 @@
-// mobile/app/components/DeleteAccountModal.js
+//mobile/components
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, Modal, StyleSheet, TouchableOpacity, AppState } from 'react-native';
+import { View, Text, Modal, StyleSheet, TouchableOpacity, AppState, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
-const DeleteAccountModal = ({ isVisible, onClose, onConfirm }) => {
-  const [countdown, setCountdown] = useState(3);
+const DeleteAccountModal = ({ isVisible, onClose, onConfirm, isLoading }) => {
+  const [countdown, setCountdown] = useState(5);
   const [isButtonDisabled, setIsButtonDisabled] = useState(true);
   const timerRef = useRef(null);
   const appState = useRef(AppState.currentState);
 
-  // This effect manages the 3-second countdown timer
   useEffect(() => {
     if (isVisible) {
       setIsButtonDisabled(true);
-      setCountdown(3);
+      setCountdown(5);
       
-      // Start a 1-second interval timer
       timerRef.current = setInterval(() => {
         setCountdown(prev => prev - 1);
       }, 1000);
 
     } else {
-      // Clear any existing timer when the modal is closed
       clearInterval(timerRef.current);
     }
 
-    return () => clearInterval(timerRef.current); // Cleanup on unmount
+    return () => clearInterval(timerRef.current);
   }, [isVisible]);
 
-  // This effect enables the button when the countdown reaches zero
   useEffect(() => {
     if (countdown === 0) {
       clearInterval(timerRef.current);
@@ -36,13 +32,11 @@ const DeleteAccountModal = ({ isVisible, onClose, onConfirm }) => {
     }
   }, [countdown]);
 
-  // This effect resets the timer if the user backgrounds the app
   useEffect(() => {
     const subscription = AppState.addEventListener('change', nextAppState => {
       if (appState.current.match(/inactive|background/) && nextAppState === 'active') {
         if (isVisible) {
-          // Reset timer if app comes to foreground while modal is visible
-          setCountdown(3);
+          setCountdown(5);
           setIsButtonDisabled(true);
         }
       }
@@ -68,21 +62,21 @@ const DeleteAccountModal = ({ isVisible, onClose, onConfirm }) => {
           </View>
           <Text style={styles.title}>Confirm Deletion</Text>
           <Text style={styles.message}>
-            Are you sure you want to delete your account? This action is irreversible and your account will be permanently deleted after 30 days.
+            Are you sure you want to delete your account? This action is irreversible and your account will be deleted permanently, are you sure?
           </Text>
 
           <View style={styles.buttonContainer}>
-            <TouchableOpacity style={styles.cancelButton} onPress={onClose}>
+            <TouchableOpacity style={styles.cancelButton} onPress={onClose} disabled={isLoading}>
               <Text style={styles.cancelButtonText}>Cancel</Text>
             </TouchableOpacity>
             <TouchableOpacity
-              style={[styles.confirmButton, isButtonDisabled && styles.disabledButton]}
+              style={[styles.confirmButton, (isButtonDisabled || isLoading) && styles.disabledButton]}
               onPress={onConfirm}
-              disabled={isButtonDisabled}
+              disabled={isButtonDisabled || isLoading}
             >
-              <Text style={styles.confirmButtonText}>
+              {isLoading ? <ActivityIndicator color="#fff" /> : <Text style={styles.confirmButtonText}>
                 {isButtonDisabled ? `Confirm (${countdown})` : 'Confirm'}
-              </Text>
+              </Text>}
             </TouchableOpacity>
           </View>
         </View>

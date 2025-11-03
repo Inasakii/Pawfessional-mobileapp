@@ -10,25 +10,27 @@ import {
   Pressable,
   KeyboardAvoidingView,
   Platform,
-  ScrollView
+  ScrollView,
+  ActivityIndicator
 } from "react-native";
-
-const API_URL = "http://192.168.100.12:5000/api/mobile/login";
+import { MOBILE_API_BASE_URL } from "../config/apiConfigMobile";
 
 const Login = ({ navigation, setUser }) => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
 
   const handleSubmit = async () => {
-    // ... submit logic is unchanged
     if (!email || !password) {
       Alert.alert("Error", "Please enter email and password");
       return;
     }
+    
+    setIsLoading(true);
 
     try {
-      const response = await fetch(API_URL, {
+      const response = await fetch(`${MOBILE_API_BASE_URL}/login`, {
         method: "POST",
         headers: {
           Accept: "application/json",
@@ -37,18 +39,26 @@ const Login = ({ navigation, setUser }) => {
         body: JSON.stringify({ email, password }),
       });
 
-      const result = await response.json();
+      const data = await response.json();
 
-      if (result.success) {
+      if (response.ok && data.success) {
+        // Backend confirms user is valid and active by sending success: true.
+        // A separate client-side check for is_active is no longer needed.
         if (typeof setUser === "function") {
-          setUser(result.user);
+          console.log("Login successful! User object:", data.user);
+          setUser(data.user);
         }
       } else {
-        Alert.alert("Login Failed", result.message || "Invalid credentials");
+        // This single block handles all failure cases from the server,
+        // including wrong credentials, inactive user, or other server-side validations.
+        Alert.alert("Login Failed", data.message || "Invalid credentials");
       }
     } catch (error) {
-      console.error("Login error:", error);
-      Alert.alert("Error", "Unable to connect to server. Please check your connection and try again.");
+      // This catches network errors or if response.json() fails to parse.
+      console.error("Login fetch/logic error:", error);
+      Alert.alert("Error", "Unable to connect to the server. Please check your connection and try again.");
+    } finally {
+        setIsLoading(false);
     }
   };
 
@@ -98,13 +108,10 @@ const Login = ({ navigation, setUser }) => {
                 {showPassword ? "Hide Password" : "Show Password"}
               </Text>
             </TouchableOpacity>
-            <TouchableOpacity onPress={() => navigation.navigate("ForgotPassword")}>
-               <Text style={styles.linkText}>Forgot Password?</Text>
-            </TouchableOpacity>
           </View>
 
-          <TouchableOpacity style={styles.button} onPress={handleSubmit}>
-            <Text style={styles.buttonText}>Login</Text>
+          <TouchableOpacity style={[styles.button, isLoading && styles.buttonDisabled]} onPress={handleSubmit} disabled={isLoading}>
+            {isLoading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Login</Text>}
           </TouchableOpacity>
 
           <View style={styles.footer}>
@@ -129,18 +136,19 @@ const styles = StyleSheet.create({
     input: { borderWidth: 1, borderColor: "#D1D5DB", borderRadius: 10, paddingVertical: 12, paddingHorizontal: 16, marginBottom: 16, fontSize: 16, color: '#333' },
     passwordOptions: {
       flexDirection: 'row',
-      justifyContent: 'space-between',
+      justifyContent: 'flex-end',
       marginBottom: 24,
     },
     linkText: {
       color: "#3B82F6",
       fontWeight: '500',
     },
-    button: { backgroundColor: "#E9590F", padding: 16, borderRadius: 10, alignItems: "center" },
+    button: { backgroundColor: "#E9590F", padding: 16, borderRadius: 10, alignItems: "center", height: 58, justifyContent: 'center' },
+    buttonDisabled: { backgroundColor: '#F9B490' },
     buttonText: { color: "white", fontWeight: 'bold', fontSize: 16 },
     footer: { marginTop: 24, flexDirection: 'row', justifyContent: 'center' },
     footerText: {
-      color: "#6B7281",
+      color: "#6B7280",
     }
 });
 

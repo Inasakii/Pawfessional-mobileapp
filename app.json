@@ -1,14 +1,14 @@
 {
   "expo": {
-    "name": "mobileapp",
-    "slug": "mobileapp",
-    "version": "1.0.0",
+    "name": "Vet App",
+    "slug": "vet-app",
+    "version": "11.5.0",
     "orientation": "portrait",
-    "icon": "../mobileapp/mobile/assets/icon.png",
+    "icon": "./mobile/assets/PawLogo.png",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "splash": {
-      "image": "../mobileapp/mobile/assets/splash-icon.png",
+      "image": "./mobile/assets/adaptive-icon.png",
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
@@ -17,11 +17,11 @@
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "../mobileapp/mobile/assets/adaptive-icon.png",
+        "foregroundImage": "./mobile/assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
       "edgeToEdgeEnabled": true,
-      "package": "com.kennen.mobileapp"
+      "package": "com.kennen.vetapp"
     },
     "web": {
       "favicon": "./assets/icon.png"
@@ -31,7 +31,7 @@
     ],
     "extra": {
       "eas": {
-        "projectId": "bf74ba6c-174c-4dfc-b569-f65a0b1d4283"
+        "projectId": "d2efb776-e4f5-45eb-99df-827f6aedcdde"
       }
     }
   }

@@ -11,7 +11,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
-import { MOBILE_API_BASE_URL } from "../config/apiConfigMobile"; // Corrected import path
+import { MOBILE_API_BASE_URL } from "../config/apiConfigMobile";
 
 const Label = ({ children, required }) => (
   <View style={styles.labelContainer}>
@@ -20,24 +20,30 @@ const Label = ({ children, required }) => (
   </View>
 );
 
-export default function PetAdd({ navigation, route }) {
-  const { user } = route.params || {};
+export default function PetEdit({ navigation, route }) {
+  const { pet, user } = route.params || {};
   const [petData, setPetData] = useState({
-    pet_name: "",
-    species: "",
-    breed: "",
-    gender: "",
-    age: "",
-    weight: "",
-    notes: "",
+    pet_name: pet?.pet_name || "",
+    species: pet?.species || "",
+    breed: pet?.breed || "",
+    gender: pet?.gender || "",
+    age: pet?.age?.toString() || "",
+    weight: pet?.weight?.toString() || "",
+    notes: pet?.notes || "",
   });
   const [isLoading, setIsLoading] = useState(false);
+
+  if (!pet) {
+    Alert.alert("Error", "Pet data not found. Please go back and try again.");
+    navigation.goBack();
+    return null;
+  }
 
   const handleChange = (key, value) => {
     setPetData((prev) => ({ ...prev, [key]: value }));
   };
 
-  const handleSave = async () => {
+  const handleUpdate = async () => {
     const { pet_name, species, breed, gender } = petData;
 
     if (!pet_name || !species || !breed || !gender) {
@@ -48,8 +54,8 @@ export default function PetAdd({ navigation, route }) {
     setIsLoading(true);
 
     try {
-      const response = await fetch(`${MOBILE_API_BASE_URL}/pets/add`, {
-        method: "POST",
+      const response = await fetch(`${MOBILE_API_BASE_URL}/pets/${pet.pet_id}`, {
+        method: "PATCH",
         headers: {
           'Content-Type': 'application/json',
         },
@@ -61,23 +67,16 @@ export default function PetAdd({ navigation, route }) {
         }),
       });
 
-      const responseText = await response.text();
-      let result;
-      try {
-        result = JSON.parse(responseText);
-      } catch (e) {
-        console.error("JSON Parse error on server response:", responseText);
-        throw new Error("Received an invalid response from the server.");
-      }
+      const result = await response.json();
 
       if (response.ok) {
-        Alert.alert("Success", "Pet registered successfully!");
+        Alert.alert("Success", "Pet details updated successfully!");
         navigation.goBack();
       } else {
-        Alert.alert("Error", result.message || "Failed to save pet.");
+        Alert.alert("Error", result.message || "Failed to update pet details.");
       }
     } catch (error) {
-      console.error("Error adding pet:", error);
+      console.error("Error updating pet:", error);
       Alert.alert("Error", error.message || "Could not connect to server.");
     } finally {
       setIsLoading(false);
@@ -95,7 +94,7 @@ export default function PetAdd({ navigation, route }) {
           <TouchableOpacity onPress={() => navigation.goBack()}>
             <Ionicons name="arrow-back" size={24} color="#333" />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>Add New Pet</Text>
+          <Text style={styles.headerTitle}>Edit Pet Details</Text>
           <View style={{ width: 24 }} />
         </View>
 
@@ -174,11 +173,11 @@ export default function PetAdd({ navigation, route }) {
           />
         </View>
 
-        <TouchableOpacity style={styles.btn} onPress={handleSave} disabled={isLoading}>
+        <TouchableOpacity style={styles.btn} onPress={handleUpdate} disabled={isLoading}>
           {isLoading ? <ActivityIndicator color="#fff" /> : (
             <>
-              <Ionicons name="paw-outline" size={22} color="#fff" />
-              <Text style={styles.btnText}>Save Pet</Text>
+              <Ionicons name="save-outline" size={22} color="#fff" />
+              <Text style={styles.btnText}>Save Changes</Text>
             </>
           )}
         </TouchableOpacity>

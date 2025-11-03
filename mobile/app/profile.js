@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useMemo } from "react";
 import {
   View,
   Text,
@@ -10,194 +10,251 @@ import {
   ScrollView,
   KeyboardAvoidingView,
   Platform,
+  ActivityIndicator
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { Ionicons } from "@expo/vector-icons";
+import { Ionicons, Feather } from "@expo/vector-icons";
+import { MOBILE_API_BASE_URL } from "../config/apiConfigMobile";
+import Toast from "react-native-toast-message";
+import DeleteAccountModal from "./components/DeleteAccountModal";
 
-// Utility function to format the full name
-const formatFullName = (fullname) => {
-  if (!fullname) return "";
-  const parts = fullname.trim().split(" ");
-  if (parts.length > 2) {
-    const firstName = parts[0];
-    const lastName = parts[parts.length - 1];
-    const middleInitial = parts.slice(1, -1).map(name => `${name.charAt(0).toUpperCase()}.`).join(' ');
-    return `${firstName} ${middleInitial} ${lastName}`;
-  }
-  return fullname;
-};
+const PasswordRequirement = ({ met, text }) => (
+  <View style={styles.requirementRow}>
+    <Feather name={met ? "check-circle" : "x-circle"} size={16} color={met ? "#10B981" : "#EF4444"} />
+    <Text style={[styles.requirementText, { color: met ? "#10B981" : "#6B7281" }]}>{text}</Text>
+  </View>
+);
 
-export default function Profile({ navigation, route, user: propUser, setUser }) {
-  const user = propUser || route?.params?.user || null;
+const Profile = ({ navigation, route, setUser }) => {
+  const { user } = route.params;
+  const [activeSection, setActiveSection] = useState(null); // 'edit', 'password', null
+  const [isLoading, setIsLoading] = useState(false);
+  const [isModalVisible, setModalVisible] = useState(false);
+  const [isLoadingDeletion, setIsLoadingDeletion] = useState(false);
 
-  const [showSecurity, setShowSecurity] = useState(false);
-  const [currentPass, setCurrentPass] = useState("");
-  const [newPass, setNewPass] = useState("");
-  const [confirmPass, setConfirmPass] = useState("");
-  const [error, setError] = useState("");
-  
-  const [passwordsMatch, setPasswordsMatch] = useState(null);
+  // State for Edit Profile
+  const [editedName, setEditedName] = useState(user.fullname);
 
-  useEffect(() => {
-    if (newPass || confirmPass) {
-        setPasswordsMatch(newPass === confirmPass && newPass.length > 0);
-    } else {
-        setPasswordsMatch(null);
-    }
-  }, [newPass, confirmPass]);
+  // State for Change Password
+  const [passwords, setPasswords] = useState({
+    currentPassword: "",
+    newPassword: "",
+    confirmPassword: "",
+  });
 
+  const passwordValidation = useMemo(() => {
+    const pass = passwords.newPassword;
+    const hasLength = pass.length >= 8;
+    const hasUppercase = /[A-Z]/.test(pass);
+    const hasNumber = /\d/.test(pass);
+    const hasSpecialChar = /[!@#$%^&*(),.?":{}|<>]/.test(pass);
+    const allMet = hasLength && hasUppercase && hasNumber && hasSpecialChar;
+    return { hasLength, hasUppercase, hasNumber, hasSpecialChar, allMet };
+  }, [passwords.newPassword]);
 
-  const onLogout = () => {
-    if (typeof setUser === "function") {
-      setUser(null);
-    }
-  };
-
-  const handleChangePassword = async () => {
-    if (!currentPass || !newPass || !confirmPass) {
-      setError("Please fill out all fields.");
+  const handleUpdateProfile = async () => {
+    if (editedName.trim().length < 3) {
+      Alert.alert("Validation Error", "Full name must be at least 3 characters long.");
       return;
     }
-    if (newPass !== confirmPass) {
-      setError("New passwords do not match.");
-      return;
-    }
-
+    setIsLoading(true);
     try {
-      const res = await fetch("http://192.168.100.12:5000/mobile/change-password", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          // FIX: The user object from login uses 'id', not 'user_id'.
-          user_id: user.id, 
-          currentPassword: currentPass,
-          newPassword: newPass,
-        }),
+      const response = await fetch(`${MOBILE_API_BASE_URL}/users/${user.id}/profile`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fullname: editedName.trim() }),
       });
+      const result = await response.json();
+      if (response.ok) {
+        Toast.show({ type: 'success', text1: 'Profile Updated', text2: 'Your name has been changed.' });
+        setUser({ ...user, fullname: editedName.trim() }); // Update user state in App.js
+        setActiveSection(null);
+      } else {
+        throw new Error(result.message || "Failed to update profile.");
+      }
+    } catch (error) {
+      Alert.alert("Update Error", error.message);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+  
+  const handleChangePassword = async () => {
+    if (!passwords.currentPassword || !passwords.newPassword) {
+        Alert.alert('Validation Error', 'All password fields are required.');
+        return;
+    }
+    if (!passwordValidation.allMet) {
+        Alert.alert('Validation Error', 'New password does not meet all requirements.');
+        return;
+    }
+    if (passwords.newPassword !== passwords.confirmPassword) {
+        Alert.alert('Validation Error', 'New passwords do not match.');
+        return;
+    }
 
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.message || 'An error occurred during password update.');
-
-      Alert.alert("Success", "Your password has been updated!");
-      setError("");
-      setShowSecurity(false);
-      setCurrentPass("");
-      setNewPass("");
-      setConfirmPass("");
-    } catch (err) {
-      console.error(err);
-      setError(err.message || "Network or server error.");
+    setIsLoading(true);
+    try {
+        const response = await fetch(`${MOBILE_API_BASE_URL}/change-password`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                user_id: user.id,
+                currentPassword: passwords.currentPassword,
+                newPassword: passwords.newPassword,
+            }),
+        });
+        const result = await response.json();
+        if (response.ok) {
+            Toast.show({ type: 'success', text1: 'Password Updated', text2: 'Your password has been changed successfully.' });
+            setPasswords({ currentPassword: '', newPassword: '', confirmPassword: '' });
+            setActiveSection(null);
+        } else {
+            throw new Error(result.message || 'Failed to change password.');
+        }
+    } catch (error) {
+        Alert.alert('Update Error', error.message);
+    } finally {
+        setIsLoading(false);
     }
   };
 
-  if (!user) {
-    return (
-      <SafeAreaView style={styles.screen}>
-          <Text>Loading...</Text>
-      </SafeAreaView>
-    )
-  }
+  const handleAccountDeletion = async () => {
+    setIsLoadingDeletion(true);
+    try {
+        const response = await fetch(`${MOBILE_API_BASE_URL}/users/${user.id}`, {
+            method: 'DELETE',
+        });
+        const result = await response.json();
+        if (response.ok && result.success) {
+            Alert.alert("Account Deleted", result.message || "Your account has been permanently deleted.");
+            if (typeof setUser === "function") {
+                setUser(null);
+            }
+            navigation.reset({
+                index: 0,
+                routes: [{ name: "Login" }],
+            });
+        } else {
+            Alert.alert("Deletion Failed", result.message || "Could not delete account. Please try again.");
+        }
+    } catch (error) {
+        console.error("Account deletion error:", error);
+        Alert.alert("Error", "Unable to connect to server for deletion. Please try again.");
+    } finally {
+        setIsLoadingDeletion(false);
+        setModalVisible(false);
+    }
+  };
+
+
+  const handleLogout = () => {
+    setUser(null);
+    navigation.reset({ index: 0, routes: [{ name: 'Login' }] });
+  };
 
   return (
-    <SafeAreaView style={styles.screen} edges={['top', 'left', 'right']}>
-    <KeyboardAvoidingView 
-        style={{flex: 1}}
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
-        keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 0}
-    >
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
-          <Ionicons name="arrow-back-outline" size={26} color="#333" />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>My Profile</Text>
-      </View>
+    <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
+      <DeleteAccountModal
+        isVisible={isModalVisible}
+        onClose={() => setModalVisible(false)}
+        onConfirm={handleAccountDeletion}
+        isLoading={isLoadingDeletion}
+      />
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{flex: 1}}>
+        <ScrollView contentContainerStyle={styles.scrollContent}>
+          <View style={styles.header}>
+            <TouchableOpacity onPress={() => navigation.goBack()}>
+              <Ionicons name="arrow-back" size={24} color="#333" />
+            </TouchableOpacity>
+            <Text style={styles.headerTitle}>My Profile</Text>
+            <View style={{ width: 24 }} />
+          </View>
 
-      <ScrollView contentContainerStyle={styles.container}>
-        <View style={styles.profileCard}>
+          <View style={styles.profileHeader}>
             <View style={styles.avatar}>
-                <Text style={styles.avatarText}>
-                    {(user.fullname || "?")[0].toUpperCase()}
-                </Text>
+              <Text style={styles.avatarText}>{(user.fullname || '?')[0].toUpperCase()}</Text>
             </View>
-            <Text style={styles.userName}>{formatFullName(user.fullname)}</Text>
-            <Text style={styles.userEmail}>{user.email}</Text>
-        </View>
-
-        <View style={styles.menuContainer}>
-             <MenuItem icon="settings-outline" text="Settings" onPress={() => navigation.navigate("Settings", { user, setUser })} />
-             <MenuItem icon="lock-closed-outline" text="Change Password" onPress={() => setShowSecurity(!showSecurity)} />
-        </View>
-
-        {showSecurity && (
-          <View style={styles.securityCard}>
-            <Text style={styles.sectionTitle}>Change Password</Text>
-            <TextInput placeholder="Current Password" secureTextEntry style={styles.input} value={currentPass} onChangeText={setCurrentPass} placeholderTextColor="#9CA3AF" />
-            <TextInput placeholder="New Password" secureTextEntry style={styles.input} value={newPass} onChangeText={setNewPass} placeholderTextColor="#9CA3AF" />
-            <TextInput placeholder="Confirm Password" secureTextEntry style={styles.input} value={confirmPass} onChangeText={setConfirmPass} placeholderTextColor="#9CA3AF" />
-            
-            {passwordsMatch !== null && (
-                <View style={styles.validationContainer}>
-                    <Ionicons 
-                        name={passwordsMatch ? "checkmark-circle" : "close-circle"} 
-                        size={20} 
-                        color={passwordsMatch ? "#10B981" : "#EF4444"} 
-                    />
-                    <Text style={[styles.validationText, {color: passwordsMatch ? "#10B981" : "#EF4444"}]}>
-                        {passwordsMatch ? "Passwords match" : "Passwords do not match"}
-                    </Text>
-                </View>
+            <Text style={styles.name}>{user.fullname}</Text>
+            <Text style={styles.email}>{user.email}</Text>
+          </View>
+          
+          <View style={styles.menuContainer}>
+            <MenuItem icon="person-outline" text="Edit Profile" onPress={() => setActiveSection(activeSection === 'edit' ? null : 'edit')} />
+            {activeSection === 'edit' && (
+              <View style={styles.formContainer}>
+                <TextInput style={styles.input} value={editedName} onChangeText={setEditedName} placeholder="Full Name" placeholderTextColor="#A0AEC0" />
+                <TouchableOpacity style={styles.button} onPress={handleUpdateProfile} disabled={isLoading}>
+                  {isLoading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Update Name</Text>}
+                </TouchableOpacity>
+              </View>
             )}
 
-            {error ? <Text style={styles.errorText}>{error}</Text> : null}
-            <TouchableOpacity style={styles.changeBtn} onPress={handleChangePassword}>
-              <Text style={styles.changeText}>Update Password</Text>
-            </TouchableOpacity>
+            <MenuItem icon="lock-closed-outline" text="Change Password" onPress={() => setActiveSection(activeSection === 'password' ? null : 'password')} />
+            {activeSection === 'password' && (
+              <View style={styles.formContainer}>
+                <TextInput style={styles.input} value={passwords.currentPassword} onChangeText={(t) => setPasswords(p => ({...p, currentPassword: t}))} placeholder="Current Password" secureTextEntry placeholderTextColor="#A0AEC0" />
+                <TextInput style={styles.input} value={passwords.newPassword} onChangeText={(t) => setPasswords(p => ({...p, newPassword: t}))} placeholder="New Password" secureTextEntry placeholderTextColor="#A0AEC0" />
+                {passwords.newPassword.length > 0 && (
+                  <View style={styles.requirementsContainer}>
+                    <PasswordRequirement met={passwordValidation.hasLength} text="At least 8 characters" />
+                    <PasswordRequirement met={passwordValidation.hasUppercase} text="One uppercase letter" />
+                    <PasswordRequirement met={passwordValidation.hasNumber} text="One number" />
+                    <PasswordRequirement met={passwordValidation.hasSpecialChar} text="One special character" />
+                  </View>
+                )}
+                <TextInput style={styles.input} value={passwords.confirmPassword} onChangeText={(t) => setPasswords(p => ({...p, confirmPassword: t}))} placeholder="Confirm New Password" secureTextEntry placeholderTextColor="#A0AEC0" />
+                <TouchableOpacity style={styles.button} onPress={handleChangePassword} disabled={isLoading}>
+                    {isLoading ? <ActivityIndicator color="#fff"/> : <Text style={styles.buttonText}>Update Password</Text>}
+                </TouchableOpacity>
+              </View>
+            )}
+            
+            <MenuItem icon="document-text-outline" text="Terms & Conditions" onPress={() => navigation.navigate('TermsScreen')} />
+            <MenuItem icon="shield-checkmark-outline" text="Privacy Policy" onPress={() => navigation.navigate('PrivacyPolicyScreen')} />
+            <MenuItem icon="trash-outline" text="Delete Account" onPress={() => setModalVisible(true)} isDelete />
           </View>
-        )}
 
-        <TouchableOpacity style={styles.logoutButton} onPress={onLogout}>
-            <Ionicons name="log-out-outline" size={22} color="#fff5f5" />
-            <Text style={styles.logoutButtonText}>Logout</Text>
-        </TouchableOpacity>
-      </ScrollView>
-    </KeyboardAvoidingView>
+          <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
+            <Ionicons name="log-out-outline" size={22} color="#EF4444" />
+            <Text style={styles.logoutText}>Logout</Text>
+          </TouchableOpacity>
+        </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
-}
+};
 
-const MenuItem = ({ icon, text, onPress }) => (
-    <TouchableOpacity style={styles.menuItem} onPress={onPress}>
-        <View style={styles.menuIcon}>
-             <Ionicons name={icon} size={22} color="#E9590F" />
-        </View>
-        <Text style={styles.menuText}>{text}</Text>
-        <Ionicons name="chevron-forward-outline" size={20} color="#ccc" />
-    </TouchableOpacity>
+const MenuItem = ({ icon, text, onPress, isDelete }) => (
+  <TouchableOpacity style={styles.menuItem} onPress={onPress}>
+    <Ionicons name={icon} size={22} color={isDelete ? "#EF4444" : "#4A5568"} />
+    <Text style={[styles.menuText, isDelete && { color: "#EF4444" }]}>{text}</Text>
+    <Ionicons name="chevron-forward-outline" size={22} color="#CBD5E0" />
+  </TouchableOpacity>
 );
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: "#F5F7FB" },
-  header: { flexDirection: "row", alignItems: "center", paddingVertical: 16, paddingHorizontal: 20, backgroundColor: "#F5F7FB", borderBottomWidth: 1, borderBottomColor: '#eee' },
-  backBtn: { marginRight: 16 },
-  headerTitle: { fontSize: 22, fontWeight: "700", color: "#333" },
-  container: { padding: 20, paddingBottom: 40 },
-  profileCard: { alignItems: 'center', backgroundColor: '#fff', borderRadius: 16, padding: 24, marginBottom: 24, shadowColor: "#000", shadowOpacity: 0.05, shadowRadius: 10, elevation: 3 },
-  avatar: { width: 80, height: 80, borderRadius: 40, backgroundColor: '#E9590F', justifyContent: 'center', alignItems: 'center', marginBottom: 12 },
-  avatarText: { color: '#fff', fontSize: 32, fontWeight: 'bold' },
-  userName: { fontSize: 20, fontWeight: 'bold', color: '#333' },
-  userEmail: { fontSize: 16, color: '#777', marginTop: 4 },
-  menuContainer: { backgroundColor: '#fff', borderRadius: 16, overflow: 'hidden', shadowColor: "#000", shadowOpacity: 0.05, shadowRadius: 10, elevation: 3 },
-  menuItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: 16, paddingHorizontal: 20, borderBottomWidth: 1, borderBottomColor: '#f0f0f0' },
-  menuIcon: { width: 36, height: 36, borderRadius: 18, backgroundColor: '#fdf2e9', justifyContent: 'center', alignItems: 'center', marginRight: 16 },
-  menuText: { flex: 1, fontSize: 16, color: '#333' },
-  securityCard: { backgroundColor: "#fff", borderRadius: 14, padding: 20, marginTop: 20, elevation: 3 },
-  sectionTitle: { fontSize: 18, fontWeight: "600", color: "#E9590F", marginBottom: 12 },
-  input: { backgroundColor: "#F0F0F0", borderRadius: 8, padding: 12, marginBottom: 10, color: '#333', fontSize: 16 },
-  errorText: { color: "red", marginTop: 4, marginBottom: 8, fontSize: 14 },
-  changeBtn: { backgroundColor: "#E9590F", padding: 14, borderRadius: 8, alignItems: "center", marginTop: 10 },
-  changeText: { color: "#fff", fontWeight: "bold", fontSize: 16 },
-  logoutButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: '#ff4d4f', paddingVertical: 14, borderRadius: 10, marginTop: 30 },
-  logoutButtonText: { color: '#fff5f5', fontWeight: 'bold', fontSize: 16, marginLeft: 8 },
-  validationContainer: { flexDirection: 'row', alignItems: 'center', marginBottom: 10, paddingHorizontal: 4 },
-  validationText: { marginLeft: 8, fontSize: 14, fontWeight: '500' },
+  container: { flex: 1, backgroundColor: '#F5F7FB' },
+  scrollContent: { padding: 20, flexGrow: 1 },
+  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 },
+  headerTitle: { fontSize: 22, fontWeight: 'bold' },
+  profileHeader: { alignItems: 'center', marginBottom: 30 },
+  avatar: { width: 100, height: 100, borderRadius: 50, backgroundColor: '#E9590F', justifyContent: 'center', alignItems: 'center', marginBottom: 12 },
+  avatarText: { color: '#fff', fontSize: 40, fontWeight: 'bold' },
+  name: { fontSize: 24, fontWeight: 'bold', color: '#2D3748' },
+  email: { fontSize: 16, color: '#718096' },
+  menuContainer: { backgroundColor: '#fff', borderRadius: 12, marginBottom: 20 },
+  menuItem: { flexDirection: 'row', alignItems: 'center', padding: 16, borderBottomWidth: 1, borderBottomColor: '#F1F5F9' },
+  menuText: { flex: 1, marginLeft: 16, fontSize: 16, color: '#4A5568' },
+  formContainer: { padding: 16, backgroundColor: '#F8FAFC', borderBottomWidth: 1, borderBottomColor: '#F1F5F9' },
+  input: { backgroundColor: '#fff', borderWidth: 1, borderColor: '#CBD5E0', borderRadius: 8, padding: 12, marginBottom: 12, fontSize: 16, color: '#2D3748' },
+  button: { backgroundColor: '#E9590F', padding: 14, borderRadius: 8, alignItems: 'center' },
+  buttonText: { color: '#fff', fontWeight: 'bold', fontSize: 16 },
+  logoutButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: '#FEE2E2', padding: 16, borderRadius: 12 },
+  logoutText: { color: '#EF4444', marginLeft: 8, fontWeight: 'bold', fontSize: 16 },
+  requirementsContainer: { paddingHorizontal: 10, paddingBottom: 10 },
+  requirementRow: { flexDirection: 'row', alignItems: 'center', marginVertical: 4 },
+  requirementText: { marginLeft: 8, fontSize: 13 },
 });
+
+export default Profile;

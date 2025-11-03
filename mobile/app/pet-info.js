@@ -1,19 +1,17 @@
-
 import React, { useEffect, useState } from "react";
-import { 
-  View, 
-  Text, 
-  TouchableOpacity, 
-  StyleSheet, 
-  ScrollView, 
-  ActivityIndicator, 
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  StyleSheet,
+  ScrollView,
+  ActivityIndicator,
   Alert,
-  Image 
+  Image
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
-
-const SERVER_URL = 'http://192.168.100.12:5000';
+import { MOBILE_API_BASE_URL, MOBILE_SERVER_ROOT_URL } from "../config/apiConfigMobile"; 
 
 export default function PetInfo({ navigation, route }) {
   const { user } = route.params; 
@@ -36,7 +34,7 @@ export default function PetInfo({ navigation, route }) {
 
     setLoading(true);
     try {
-      const response = await fetch(`${SERVER_URL}/api/mobile/pets/${user.id}`);
+      const response = await fetch(`${MOBILE_API_BASE_URL}/pets/${user.id}`);
       const data = await response.json();
 
       if (response.ok && Array.isArray(data)) {
@@ -51,6 +49,37 @@ export default function PetInfo({ navigation, route }) {
       setLoading(false);
     }
   };
+
+  const handleDeletePet = (petId) => {
+    Alert.alert(
+      "Confirm Deletion",
+      "Are you sure you want to delete this pet? This action cannot be undone.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              const response = await fetch(`${MOBILE_API_BASE_URL}/pets/${petId}`, {
+                method: "DELETE",
+              });
+              const result = await response.json();
+              if (response.ok) {
+                Alert.alert("Success", result.message);
+                fetchPets(); // Refresh the list
+              } else {
+                throw new Error(result.message || "Failed to delete pet.");
+              }
+            } catch (error) {
+              Alert.alert("Error", error.message);
+            }
+          },
+        },
+      ]
+    );
+  };
+
 
   const DetailRow = ({ icon, text }) => (
     <View style={styles.detailRow}>
@@ -85,7 +114,7 @@ export default function PetInfo({ navigation, route }) {
             <View key={pet.pet_id} style={styles.petCard}>
               <View style={styles.petCardHeader}>
                 {pet.pet_image_url ? (
-                  <Image source={{ uri: `${SERVER_URL}${pet.pet_image_url}`}} style={styles.petImage} />
+                  <Image source={{ uri: `${MOBILE_SERVER_ROOT_URL}${pet.pet_image_url}`}} style={styles.petImage} />
                 ) : (
                   <View style={styles.petAvatar}>
                     <Text style={styles.petAvatarText}>{(pet.pet_name || '?')[0].toUpperCase()}</Text>
@@ -94,6 +123,15 @@ export default function PetInfo({ navigation, route }) {
                 <View style={styles.petInfo}>
                   <Text style={styles.petName}>{pet.pet_name}</Text>
                   <Text style={styles.petBreed}>{pet.species} • {pet.breed}</Text>
+                </View>
+                {/* Action Buttons */}
+                <View style={styles.actionButtons}>
+                    <TouchableOpacity onPress={() => navigation.navigate("PetEdit", { pet, user })} style={styles.iconButton}>
+                        <Ionicons name="pencil" size={22} color="#4A5568" />
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={() => handleDeletePet(pet.pet_id)} style={styles.iconButton}>
+                        <Ionicons name="trash-outline" size={22} color="#EF4444" />
+                    </TouchableOpacity>
                 </View>
               </View>
               <View style={styles.detailsContainer}>
@@ -204,4 +242,11 @@ const styles = StyleSheet.create({
     shadowRadius: 5,
   },
   addBtnText: { color: "#fff", marginLeft: 8, fontWeight: "bold", fontSize: 16 },
+  actionButtons: {
+    flexDirection: 'row',
+  },
+  iconButton: {
+    marginLeft: 16,
+    padding: 8,
+  }
 });
