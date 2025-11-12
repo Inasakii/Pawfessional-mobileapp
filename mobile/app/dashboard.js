@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from "react";
+import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import {
   View,
   Text,
@@ -13,6 +13,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect } from '@react-navigation/native';
 import io from 'socket.io-client';
+import Toast from 'react-native-toast-message';
 import { MOBILE_API_BASE_URL, MOBILE_SERVER_ROOT_URL } from "../config/apiConfigMobile";
 
 const Dashboard = ({ navigation, route, user: propUser }) => {
@@ -21,11 +22,18 @@ const Dashboard = ({ navigation, route, user: propUser }) => {
   const [filteredAppointments, setFilteredAppointments] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [activeFilter, setActiveFilter] = useState('Pending');
+  const prevAppointmentsRef = useRef([]);
+  const isInitialFetch = useRef(true);
 
   const firstName = user?.fullname ? user.fullname.split(' ')[0] : (user?.email || 'Guest');
 
   const completedAppointmentsCount = useMemo(() => {
     return allAppointments.filter(app => app.status && app.status.toLowerCase() === 'completed').length;
+  }, [allAppointments]);
+
+  useEffect(() => {
+    // Keep a reference to the previous state of appointments for comparison
+    prevAppointmentsRef.current = allAppointments;
   }, [allAppointments]);
 
   const fetchAppointments = useCallback(async () => {
@@ -34,7 +42,10 @@ const Dashboard = ({ navigation, route, user: propUser }) => {
         return;
     }
     try {
-      setIsLoading(true);
+      // Only show the full-screen loader on the initial fetch for the screen
+      if (isInitialFetch.current) {
+        setIsLoading(true);
+      }
       const response = await fetch(`${MOBILE_API_BASE_URL}/appointments/${user.id}`);
       const responseText = await response.text();
 
@@ -51,6 +62,29 @@ const Dashboard = ({ navigation, route, user: propUser }) => {
       }
 
       const data = JSON.parse(responseText);
+
+      // --- Toast Notification Logic ---
+      // Only check for new appointments on subsequent fetches (triggered by sockets), not the initial one.
+      if (!isInitialFetch.current) {
+        const oldAppointments = prevAppointmentsRef.current;
+        if (oldAppointments) {
+            const oldAppointmentIds = new Set(oldAppointments.map(a => a.appointment_id));
+            // Find an appointment that is new and has been approved (indicating a staff-booked appointment)
+            const newStaffBookedAppointment = data.find(
+                a => !oldAppointmentIds.has(a.appointment_id) && a.status === 'Approved'
+            );
+        
+            if (newStaffBookedAppointment) {
+                Toast.show({
+                    type: 'success',
+                    text1: 'New Appointment Booked!',
+                    text2: `An appointment for ${newStaffBookedAppointment.pet_name} has been scheduled for you.`,
+                    visibilityTime: 5000,
+                });
+            }
+        }
+      }
+
       setAllAppointments(data);
 
     } catch (error) {
@@ -58,11 +92,13 @@ const Dashboard = ({ navigation, route, user: propUser }) => {
       setAllAppointments([]);
     } finally {
       setIsLoading(false);
+      isInitialFetch.current = false; // Mark that the initial fetch is complete
     }
   }, [user]);
 
   useFocusEffect(
     React.useCallback(() => {
+      isInitialFetch.current = true; // Reset on focus, so the first load is always considered "initial"
       if (user && user.id) {
         fetchAppointments();
       } else {
@@ -82,20 +118,10 @@ const Dashboard = ({ navigation, route, user: propUser }) => {
     }, [fetchAppointments]);
 
   useEffect(() => {
-    // Make comparisons case-insensitive to avoid issues with data from the server.
     const filterLower = activeFilter.toLowerCase();
+    let filtered = allAppointments.filter(app => app.status && app.status.toLowerCase() === filterLower);
 
-    let filtered = [];
-    if (['pending', 'approved', 'completed'].includes(filterLower)) {
-        filtered = allAppointments
-            .filter(app => app.status && app.status.toLowerCase() === filterLower);
-    } else if (filterLower === 'cancelled') {
-        const statusesToFilter = ['cancelled', 'rejected', 'no show'];
-        filtered = allAppointments
-            .filter(app => app.status && statusesToFilter.includes(app.status.toLowerCase()));
-    }
-
-    // Sort ascending for upcoming, descending for past/cancelled
+    // Sort ascending for upcoming, descending for past
     if (['pending', 'approved'].includes(filterLower)) {
         filtered.sort((a, b) => new Date(a.appointment_date) - new Date(b.appointment_date));
     } else {
@@ -105,6 +131,39 @@ const Dashboard = ({ navigation, route, user: propUser }) => {
     setFilteredAppointments(filtered);
   }, [activeFilter, allAppointments]);
 
+  const handleCancelAppointment = (appointmentId) => {
+    Alert.alert(
+        "Confirm Cancellation",
+        "Are you sure you want to cancel this appointment?",
+        [
+            { text: "No", style: "cancel" },
+            {
+                text: "Yes, Cancel",
+                style: "destructive",
+                onPress: async () => {
+                    try {
+                        const response = await fetch(`${MOBILE_API_BASE_URL}/appointment/${appointmentId}/cancel`, {
+                            method: 'PATCH',
+                        });
+                        const result = await response.json();
+                        if (response.ok) {
+                            Toast.show({
+                                type: 'info',
+                                text1: 'Appointment Cancelled',
+                                text2: result.message,
+                            });
+                            fetchAppointments(); // Re-fetch to update list
+                        } else {
+                            throw new Error(result.message);
+                        }
+                    } catch (error) {
+                        Alert.alert('Error', error.message);
+                    }
+                },
+            },
+        ]
+    );
+  };
 
   if (!user) {
     return (
@@ -129,7 +188,7 @@ const Dashboard = ({ navigation, route, user: propUser }) => {
         
         <View style={styles.filterContainer}>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 16 }}>
-                {['Pending', 'Approved', 'Completed', 'Cancelled'].map(f => (
+                {['Pending', 'Approved', 'Completed'].map(f => (
                     <TouchableOpacity key={f} style={[styles.filterButton, activeFilter === f && styles.activeFilter]} onPress={() => setActiveFilter(f)}>
                         <Text style={[styles.filterText, activeFilter === f && styles.activeFilterText]}>{f}</Text>
                     </TouchableOpacity>
@@ -166,6 +225,15 @@ const Dashboard = ({ navigation, route, user: propUser }) => {
                           <Ionicons name="information-circle-outline" size={16} color="#4A5568" />
                           <Text style={styles.notesText} numberOfLines={2}>Note: {item.notes}</Text>
                       </View>
+                  )}
+                  {['pending', 'approved'].includes(item.status.toLowerCase()) && (
+                    <TouchableOpacity
+                        style={styles.cancelButton}
+                        onPress={() => handleCancelAppointment(item.appointment_id)}
+                    >
+                        <Ionicons name="close-circle-outline" size={20} color="#EF4444" />
+                        <Text style={styles.cancelButtonText}>Cancel Appointment</Text>
+                    </TouchableOpacity>
                   )}
                 </View>
               )}
@@ -235,7 +303,6 @@ const styles = StyleSheet.create({
       shadowOpacity: 0.3,
       shadowRadius: 8,
       elevation: 10,
-      marginBottom: 30,
   },
   welcomeCardTitle: {
       fontSize: 28,
@@ -254,7 +321,7 @@ const styles = StyleSheet.create({
   },
   filterContainer: {
     paddingBottom: 10,
-    marginTop: -10, // Pulls the filters up to overlap slightly
+    marginTop: 16,
   },
   filterButton: {
     paddingVertical: 8,
@@ -304,6 +371,36 @@ const styles = StyleSheet.create({
     color: '#4A5568',
     flex: 1,
     fontStyle: 'italic',
+  },
+  cancelButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 10,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: '#F1F5F9',
+    width: '100%',
+  },
+  cancelButtonText: {
+      color: '#EF4444',
+      marginLeft: 8,
+      fontWeight: '600',
+      fontSize: 14,
+  },
+  clearButton: {
+      flexDirection: 'row',
+      backgroundColor: '#FEE2E2',
+      padding: 12,
+      borderRadius: 8,
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginBottom: 10,
+  },
+  clearButtonText: {
+      color: '#991B1B',
+      fontWeight: '600',
+      marginLeft: 8,
   },
 });
 

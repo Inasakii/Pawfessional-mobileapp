@@ -2,9 +2,9 @@
   "expo": {
     "name": "Vet App",
     "slug": "vet-app",
-    "version": "11.8.0",
+    "version": "13.1.2",
     "orientation": "portrait",
-    "icon": "./mobile/assets/PawLogo.png",
+    "icon": "./mobile/assets/",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "splash": {
@@ -17,11 +17,11 @@
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./mobile/assets/PawLogo.ico",
+        "foregroundImage": "./mobile/assets/mobile-logo.png",
         "backgroundColor": "#ffffff"
       },
       "edgeToEdgeEnabled": true,
-      "package": "com.kennen.vetapp"
+      "package": "com.inasakiii.vetapp"
     },
     "web": {
       "favicon": "./assets/icon.png"
@@ -31,8 +31,9 @@
     ],
     "extra": {
       "eas": {
-        "projectId": "d2efb776-e4f5-45eb-99df-827f6aedcdde"
+        "projectId": "b664616f-a3eb-4cb3-8885-94c355606327"
       }
-    }
+    },
+    "owner": "inasakiii"
   }
 }

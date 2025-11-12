@@ -28,6 +28,8 @@ const Login = ({ navigation, setUser }) => {
     }
     
     setIsLoading(true);
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 20000); // 20-second timeout
 
     try {
       const response = await fetch(`${MOBILE_API_BASE_URL}/login`, {
@@ -37,7 +39,10 @@ const Login = ({ navigation, setUser }) => {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({ email, password }),
+        signal: controller.signal, // Add AbortSignal
       });
+
+      clearTimeout(timeoutId); // Clear timeout if response is received
 
       const data = await response.json();
 
@@ -54,9 +59,14 @@ const Login = ({ navigation, setUser }) => {
         Alert.alert("Login Failed", data.message || "Invalid credentials");
       }
     } catch (error) {
-      // This catches network errors or if response.json() fails to parse.
-      console.error("Login fetch/logic error:", error);
-      Alert.alert("Error", "Unable to connect to the server. Please check your connection and try again.");
+      clearTimeout(timeoutId); // Also clear timeout on error
+      if (error.name === 'AbortError') {
+        Alert.alert("Request Timed Out", "The server is taking too long to respond. This might be because it's waking up. Please try again in a moment.");
+      } else {
+        // This catches network errors or if response.json() fails to parse.
+        console.error("Login fetch/logic error:", error);
+        Alert.alert("Error", "Unable to connect to the server. Please check your connection and try again.");
+      }
     } finally {
         setIsLoading(false);
     }

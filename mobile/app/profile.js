@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo } from "react";
 import {
   View,
@@ -32,8 +31,56 @@ const Profile = ({ navigation, route, setUser }) => {
   const [isModalVisible, setModalVisible] = useState(false);
   const [isLoadingDeletion, setIsLoadingDeletion] = useState(false);
 
-  // State for Edit Profile
-  const [editedName, setEditedName] = useState(user.fullname);
+  // State for Edit Profile - With improved name parsing
+  const parseFullName = (fullName) => {
+    if (!fullName || typeof fullName !== 'string') {
+        return { firstName: '', middleName: '', lastName: '' };
+    }
+
+    const nameParts = fullName.trim().split(/\s+/);
+    const len = nameParts.length;
+
+    if (len === 0) return { firstName: '', middleName: '', lastName: '' };
+    if (len === 1) return { firstName: nameParts[0], middleName: '', lastName: '' };
+
+    const prefixes = ["de", "dela", "delos", "del", "san", "sta", "santo"];
+    let lastNameIndex = len - 1;
+
+    // Heuristic: Check if the word before the last word is a known prefix.
+    if (len > 1 && prefixes.includes(nameParts[len - 2].toLowerCase())) {
+        lastNameIndex = len - 2;
+    }
+    
+    const lastName = nameParts.slice(lastNameIndex).join(' ');
+    const remainingParts = nameParts.slice(0, lastNameIndex);
+    
+    if (remainingParts.length === 0) {
+        // Fallback for cases where the entire name might be prefixes (e.g., "De La Cruz").
+        // This splits it reasonably, allowing the user to adjust.
+        return { 
+            firstName: nameParts.slice(0, len - 1).join(' '), 
+            middleName: '', 
+            lastName: nameParts[len - 1] 
+        };
+    }
+
+    // Default to the first word being the first name, and the rest being middle names.
+    const firstName = remainingParts[0];
+    const middleName = remainingParts.slice(1).join(' ');
+
+    return { firstName, middleName, lastName };
+  };
+  
+  const { 
+    firstName: initialFirstName, 
+    middleName: initialMiddleName, 
+    lastName: initialLastName 
+  } = parseFullName(user.fullname);
+
+  const [firstName, setFirstName] = useState(initialFirstName || '');
+  const [middleName, setMiddleName] = useState(initialMiddleName || '');
+  const [lastName, setLastName] = useState(initialLastName || '');
+
 
   // State for Change Password
   const [passwords, setPasswords] = useState({
@@ -52,22 +99,36 @@ const Profile = ({ navigation, route, setUser }) => {
     return { hasLength, hasUppercase, hasNumber, hasSpecialChar, allMet };
   }, [passwords.newPassword]);
 
+  const formatDisplayName = (fullName) => {
+    if (!fullName) return '';
+    const parts = fullName.split(' ');
+    if (parts.length > 2) {
+        const first = parts[0];
+        const last = parts[parts.length - 1];
+        const middle = parts.slice(1, -1).map(name => `${name.charAt(0)}.`).join(' ');
+        return `${first} ${middle} ${last}`;
+    }
+    return fullName;
+  };
+
   const handleUpdateProfile = async () => {
-    if (editedName.trim().length < 3) {
-      Alert.alert("Validation Error", "Full name must be at least 3 characters long.");
+    if (!firstName.trim() || !lastName.trim()) {
+      Alert.alert("Validation Error", "First and Last name are required.");
       return;
     }
     setIsLoading(true);
+    const fullname = `${firstName.trim()} ${middleName.trim()} ${lastName.trim()}`.replace(/\s+/g, ' ').trim();
+
     try {
       const response = await fetch(`${MOBILE_API_BASE_URL}/users/${user.id}/profile`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ fullname: editedName.trim() }),
+        body: JSON.stringify({ fullname }),
       });
       const result = await response.json();
       if (response.ok) {
         Toast.show({ type: 'success', text1: 'Profile Updated', text2: 'Your name has been changed.' });
-        setUser({ ...user, fullname: editedName.trim() }); // Update user state in App.js
+        setUser({ ...user, fullname }); // Update user state in App.js
         setActiveSection(null);
       } else {
         throw new Error(result.message || "Failed to update profile.");
@@ -175,7 +236,7 @@ const Profile = ({ navigation, route, setUser }) => {
             <View style={styles.avatar}>
               <Text style={styles.avatarText}>{(user.fullname || '?')[0].toUpperCase()}</Text>
             </View>
-            <Text style={styles.name}>{user.fullname}</Text>
+            <Text style={styles.name}>{formatDisplayName(user.fullname)}</Text>
             <Text style={styles.email}>{user.email}</Text>
           </View>
           
@@ -183,7 +244,9 @@ const Profile = ({ navigation, route, setUser }) => {
             <MenuItem icon="person-outline" text="Edit Profile" onPress={() => setActiveSection(activeSection === 'edit' ? null : 'edit')} />
             {activeSection === 'edit' && (
               <View style={styles.formContainer}>
-                <TextInput style={styles.input} value={editedName} onChangeText={setEditedName} placeholder="Full Name" placeholderTextColor="#A0AEC0" />
+                <TextInput style={styles.input} value={firstName} onChangeText={setFirstName} placeholder="First Name" placeholderTextColor="#A0AEC0" />
+                <TextInput style={styles.input} value={middleName} onChangeText={setMiddleName} placeholder="Middle Name (Optional)" placeholderTextColor="#A0AEC0" />
+                <TextInput style={styles.input} value={lastName} onChangeText={setLastName} placeholder="Last Name" placeholderTextColor="#A0AEC0" />
                 <TouchableOpacity style={styles.button} onPress={handleUpdateProfile} disabled={isLoading}>
                   {isLoading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Update Name</Text>}
                 </TouchableOpacity>
